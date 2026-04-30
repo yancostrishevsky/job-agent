@@ -1,0 +1,18 @@
+[repo]
+name = "job-agent"
+primary_entrypoint = "python -m app.main"
+
+[style]
+python_version = "3.11+"
+typed = true
+test_command = "python3 -m pytest"
+
+[guidance]
+summary = "Interview-ready LangGraph job discovery agent with deterministic-first matching and guarded CV tailoring."
+rules = [
+  "Prefer small cohesive changes and conventional commit messages.",
+  "Use LangGraph for workflow orchestration and keep node boundaries easy to explain.",
+  "Treat LLM functionality as optional and preserve deterministic fallback paths.",
+  "Do not add browser automation, auto-apply, or account creation flows.",
+  "Never invent candidate experience when tailoring CV artifacts."
+]

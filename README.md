@@ -1,10 +1,148 @@
-# Job Agent (v0) - rule-based job monitor POC
+# Agentic Job Discovery and Application Preparation
 
-Minimal local CLI that:
-1. Fetches job postings from adapters (`DummySource` and optionally Greenhouse / Lever)
-2. Scores them with rule-based matching against a candidate profile
-3. Stores seen job URLs in SQLite
-4. Prints **only new matching jobs** on each run
+Professional, interview-ready Python project for discovering AI/ML internships and junior roles in Poland, scoring them with deterministic rules plus optional LLM reranking, persisting results in SQLite, and preparing guarded CV artifacts for selected postings.
+
+## Problem Statement
+
+Searching for junior AI/ML roles across multiple job boards is repetitive and noisy. Different sources expose different schemas, seniority labels, and location conventions. This project demonstrates how to build an agentic but controlled pipeline that:
+
+- collects jobs from multiple sources
+- normalizes them into a shared schema
+- filters and scores them deterministically
+- optionally reranks them semantically with an LLM
+- persists and exports shortlisted results
+- prepares tailored CV materials without inventing experience
+
+## Why This Is Agentic
+
+The system uses a stateful workflow with explicit nodes, shared state, branching-friendly boundaries, and recoverable steps. Each node performs a bounded responsibility while passing structured state forward.
+
+LangGraph is the primary orchestration layer because it makes the pipeline easy to explain:
+
+- collection is isolated from normalization
+- deterministic filtering happens before LLM use
+- persistence and export are explicit side-effect nodes
+- CV tailoring is a separate terminal action, not mixed into discovery
+
+## Architecture
+
+```text
+CandidateProfile + sources.json
+        |
+        v
+collect_jobs --> normalize_jobs --> rule_filter_jobs --> llm_rerank_jobs
+                                                           |
+                                                           v
+tailor_cv_for_selected_job <-- export_shortlist <-- persist_results
+```
+
+### Package Layout
+
+```text
+app/
+  config/
+  cv/
+  matching/
+  models/
+  sources/
+  storage/
+  workflows/
+  db.py
+  main.py
+tests/
+output/
+candidate_profile.json
+sources.json
+AGENTS.md
+.codex/config.toml
+```
+
+## Source Strategy
+
+V1 includes:
+
+- `GreenhouseSource`
+- `LeverSource`
+- `PracujSource`
+- `NoFluffJobsSource`
+- `TheProtocolSource`
+
+Design choices:
+
+- Greenhouse and Lever use public published-job endpoints where possible.
+- Pracuj, No Fluff Jobs, and The Protocol use broad-market discovery pages and HTML parsing.
+- Network fetchers and HTML/JSON parsers are separated so failures are easier to isolate and test.
+- Each source maps into a shared `JobPosting` model.
+- Any single source failure is logged and the workflow continues.
+
+## Matching Strategy
+
+### 1. Deterministic First
+
+The rule engine prioritizes explainability and predictable fallback behavior:
+
+- targets internship, junior, graduate, trainee, and entry-level roles
+- boosts Krakow, Kraków, Poland, remote, and hybrid-friendly locations
+- boosts AI / ML / NLP / CV / research / MLOps-adjacent signals
+- penalizes senior, lead, principal, staff, and manager signals
+- supports optional recency scoring
+
+Each shortlisted result carries human-readable reasons, matched skills, missing skills, and a decision.
+
+### 2. Optional LLM Reranking
+
+Only jobs that pass the rule stage are eligible for reranking. The LLM is expected to return structured JSON with:
+
+- `fit_score`
+- `decision`
+- `matched_skills`
+- `missing_skills`
+- `seniority_fit`
+- `location_fit`
+- `short_reason`
+
+If the LLM is disabled or unavailable, the workflow returns deterministic results only.
+
+## CV Tailoring Guardrails
+
+The tailoring step accepts a master candidate profile and one selected job posting, then writes:
+
+- `output/tailored_cv.md`
+- `output/tailored_cover_note.md`
+
+Guardrails:
+
+- never invent experience
+- never invent employers
+- never inflate years of experience
+- never add fake projects
+- only reorder, condense, or emphasize verified profile content
+
+## Configuration
+
+### `candidate_profile.json`
+
+Holds the candidate preferences plus verified CV material such as skills, projects, work experience, and education.
+
+### `sources.json`
+
+Defines enabled sources and source-specific configuration, for example board tokens, Lever handles, or discovery URLs.
+
+### Environment Variables
+
+- `JOB_AGENT_DB_PATH`
+- `JOB_AGENT_OUTPUT_DIR`
+- `JOB_AGENT_CANDIDATE_PROFILE`
+- `JOB_AGENT_SOURCES_CONFIG`
+- `JOB_AGENT_MATCH_THRESHOLD`
+- `JOB_AGENT_RECENCY_DAYS`
+- `JOB_AGENT_NEW_ONLY`
+- `JOB_AGENT_LLM_ENABLED`
+- `JOB_AGENT_LLM_PROVIDER`
+- `JOB_AGENT_LLM_MODEL`
+- `JOB_AGENT_LLM_BASE_URL`
+- `JOB_AGENT_LLM_TIMEOUT_SECONDS`
+- `JOB_AGENT_SELECTED_JOB_URL`
 
 ## Run
 
@@ -15,78 +153,52 @@ pip install -r requirements.txt
 python -m app.main
 ```
 
-## Configuration
+The CLI prints enabled sources and summary counts, persists jobs to SQLite, and writes `output/latest_matches.json`.
 
-By default the SQLite DB is created at `./jobs.sqlite`.
+## Sample Output
 
-Candidate profile is loaded from `./candidate_profile.json` at runtime.
-
-Required JSON fields:
-
-- `target_levels`
-- `target_locations`
-- `target_domains`
-- `include_keywords`
-- `exclude_keywords`
-
-Optional environment variables:
-
-- `JOB_AGENT_DB_PATH` - path to the SQLite database file
-- `JOB_AGENT_MATCH_THRESHOLD` - integer match score threshold (default: `60`)
-
-### Greenhouse (optional)
-
-The Greenhouse Job Board API uses a `board_token`, which is the token part of a board URL, e.g.:
-
-- `https://boards.greenhouse.io/<board_token>`
-
-To enable Greenhouse fetching, set:
-
-- `JOB_AGENT_GREENHOUSE_ENABLED=true`
-- `JOB_AGENT_GREENHOUSE_BOARD_TOKENS` - comma-separated list of one or more `board_token` values
-
-Example:
-
-```bash
-export JOB_AGENT_GREENHOUSE_ENABLED=true
-export JOB_AGENT_GREENHOUSE_BOARD_TOKENS=acme,acme-emea
-python -m app.main
+```json
+[
+  {
+    "title": "Junior ML Engineer",
+    "company": "Acme",
+    "location": "Krakow, Poland",
+    "source": "Pracuj AI/ML Search",
+    "score": 84,
+    "decision": "strong_match",
+    "reason": "seniority=target_level; location=target_location; domains=machine learning",
+    "matched_skills": ["Python", "PyTorch"],
+    "missing_skills": ["TensorFlow"],
+    "url": "https://example.com/job"
+  }
+]
 ```
 
-If a token is invalid/unreachable, the CLI prints a readable warning and continues with other sources.
-
-### Lever (optional)
-
-Lever's public postings access is namespaced by a *site/company handle*.
-That handle is the part of the Lever URL after `jobs.lever.co/`, for example:
-
-- `https://jobs.lever.co/acme` → handle: `acme`
-
-To enable Lever fetching, set:
-
-- `JOB_AGENT_LEVER_ENABLED=true`
-- `JOB_AGENT_LEVER_HANDLES` - comma-separated list of one or more `jobs.lever.co/<handle>` values
-
-Example:
+## Tests
 
 ```bash
-export JOB_AGENT_LEVER_ENABLED=true
-export JOB_AGENT_LEVER_HANDLES=acme,acme-eu
-python -m app.main
+python3 -m pytest
 ```
 
-If a handle is invalid/unreachable, the CLI prints a readable warning and continues with other sources.
+Current lightweight coverage includes:
 
-## Export
+- model validation
+- source parser smoke tests
+- SQLite dedup/storage
+- rule matcher behavior
+- workflow smoke behavior
 
-After each run, the CLI writes the **new** matching jobs from this run to:
+## Limitations
 
-`./output/latest_matches.json`
+- Public HTML sources may change markup over time.
+- Broad-market HTML parsers are intentionally conservative rather than exhaustive.
+- CV tailoring is markdown-only in v1.
+- LLM reranking assumes a local endpoint such as Ollama and currently uses a simple JSON-oriented prompt flow.
 
-The `output/` directory is created automatically if it does not exist.
+## Roadmap
 
-## What to expect
-
-On the first run, the CLI should print new matching dummy postings.
-On subsequent runs, it prints nothing until a new URL appears in the source.
-
+- richer source-specific detail extraction
+- PDF/DOCX export for tailored CV artifacts
+- better source-specific pagination and recency handling
+- more robust company-name normalization
+- explicit human review queues for shortlisted jobs
