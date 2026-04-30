@@ -1,0 +1,8 @@
+{
+  "target_levels": ["internship", "junior"],
+  "target_locations": ["Krakow", "remote"],
+  "target_domains": ["AI", "machine learning", "deep learning", "research"],
+  "include_keywords": ["ai", "ml", "machine learning", "deep learning", "research", "pytorch", "tensorflow", "python"],
+  "exclude_keywords": ["senior", "lead", "manager", "principal"]
+}
+
