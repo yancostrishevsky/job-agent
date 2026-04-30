@@ -1,0 +1,44 @@
+{
+  "sources": [
+    {
+      "type": "greenhouse",
+      "enabled": false,
+      "label": "Example Greenhouse Boards",
+      "config": {
+        "board_tokens": ["example-company"]
+      }
+    },
+    {
+      "type": "lever",
+      "enabled": false,
+      "label": "Example Lever Boards",
+      "config": {
+        "handles": ["example-company"]
+      }
+    },
+    {
+      "type": "pracuj",
+      "enabled": true,
+      "label": "Pracuj AI/ML Search",
+      "config": {
+        "search_url": "https://it.pracuj.pl/praca?kw=machine%20learning&pn=1"
+      }
+    },
+    {
+      "type": "nofluffjobs",
+      "enabled": true,
+      "label": "No Fluff Jobs AI/ML Search",
+      "config": {
+        "search_url": "https://nofluffjobs.com/pl/jobs?criteria=keyword%3Dmachine%2520learning"
+      }
+    },
+    {
+      "type": "theprotocol",
+      "enabled": true,
+      "label": "The Protocol AI/ML Search",
+      "config": {
+        "search_url": "https://theprotocol.it/praca?keyword=machine%20learning"
+      }
+    }
+  ]
+}

@@ -24,6 +24,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS jobs (
             url TEXT PRIMARY KEY,
+            source TEXT NOT NULL DEFAULT 'unknown',
+            source_label TEXT NOT NULL DEFAULT 'Unknown Source',
             title TEXT NOT NULL,
             company TEXT NOT NULL,
             location TEXT NOT NULL,
@@ -34,6 +36,9 @@ def init_db(conn: sqlite3.Connection) -> None:
             source_job_id TEXT,
             posted_at TEXT,
             match_score INTEGER NOT NULL,
+            final_score INTEGER NOT NULL DEFAULT 0,
+            decision TEXT NOT NULL DEFAULT 'ignore',
+            llm_used INTEGER NOT NULL DEFAULT 0,
             match_reason TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -42,10 +47,15 @@ def init_db(conn: sqlite3.Connection) -> None:
     )
 
     ensure_cols = {
+        "source": "TEXT",
+        "source_label": "TEXT",
         "category": "TEXT",
         "commitment": "TEXT",
         "source_job_id": "TEXT",
         "posted_at": "TEXT",
+        "final_score": "INTEGER NOT NULL DEFAULT 0",
+        "decision": "TEXT NOT NULL DEFAULT 'ignore'",
+        "llm_used": "INTEGER NOT NULL DEFAULT 0",
     }
     cur = conn.execute("PRAGMA table_info(jobs);")
     existing_cols = {row["name"] for row in cur.fetchall()}
@@ -53,5 +63,12 @@ def init_db(conn: sqlite3.Connection) -> None:
         if col not in existing_cols:
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {typ};")
 
-    conn.commit()
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_source_job_id
+        ON jobs(source, source_job_id)
+        WHERE source_job_id IS NOT NULL;
+        """
+    )
 
+    conn.commit()

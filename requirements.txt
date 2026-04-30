@@ -1,2 +1,6 @@
+beautifulsoup4
+langchain
+langgraph
+pydantic
+pytest
 requests
-
