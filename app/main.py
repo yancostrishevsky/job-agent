@@ -1,98 +1,100 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
-from app.config import load_candidate_profile, load_config
-from app.pipeline import MatchedJob, run_pipeline
+from app.config import (
+    RuntimeConfig,
+    load_candidate_profile,
+    load_runtime_config,
+    load_source_definitions,
+)
+from app.models import MatchResult
+from app.sources import build_sources
 from app.sources.dummy import DummySource
-from app.sources.greenhouse import GreenhouseSource
-from app.sources.lever import LeverSource
+from app.workflows.graph import run_job_discovery_workflow
 
 
-def _format_job(job: MatchedJob) -> str:
+def _format_match(match: MatchResult) -> str:
+    job = match.job
     return "\n".join(
         [
             f"Title: {job.title}",
             f"Company: {job.company}",
             f"Location: {job.location}",
-            f"Score: {job.match_score}",
-            f"Reason: {job.match_reason}",
+            f"Source: {job.source_label}",
+            f"Score: {match.final_score}",
+            f"Decision: {match.decision}",
+            f"Reason: {match.short_reason}",
             f"URL: {job.url}",
         ]
     )
 
 
-def _export_latest_matches(repo_root: Path, new_matches: list[MatchedJob]) -> None:
-    """Export only the new matches from this run to `output/latest_matches.json`."""
-
-    export_path = repo_root / "output" / "latest_matches.json"
+def _export_latest_matches(config: RuntimeConfig, matches: list[MatchResult]) -> Path:
+    export_path = config.output_dir / "latest_matches.json"
     export_path.parent.mkdir(parents=True, exist_ok=True)
-
     payload = [
         {
-            "title": job.title,
-            "company": job.company,
-            "location": job.location,
-            "score": job.match_score,
-            "reason": job.match_reason,
-            "url": job.url,
-            "source": job.source,
+            "title": match.job.title,
+            "company": match.job.company,
+            "location": match.job.location,
+            "source": match.job.source_label,
+            "score": match.final_score,
+            "decision": match.decision,
+            "reason": match.short_reason,
+            "matched_skills": match.matched_skills,
+            "missing_skills": match.missing_skills,
+            "url": str(match.job.url),
         }
-        for job in new_matches
+        for match in matches
     ]
-
     export_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return export_path
+
+
+def _load_sources(config: RuntimeConfig) -> list:
+    definitions = load_source_definitions(config.sources_config_path)
+    sources = build_sources(definitions)
+    if not sources:
+        sources = [DummySource()]
+    return sources
 
 
 def main() -> None:
-    config = load_config()
-
-    repo_root = Path(__file__).resolve().parent.parent
-    candidate_profile_path = repo_root / "candidate_profile.json"
-    try:
-        profile = load_candidate_profile(candidate_profile_path)
-    except RuntimeError as e:
-        print(str(e))
-        return
-
-    sources = [DummySource()]
-    if config.greenhouse_enabled:
-        if config.greenhouse_board_tokens:
-            sources.extend(
-                GreenhouseSource(board_token=token)
-                for token in config.greenhouse_board_tokens
-            )
-        else:
-            print(
-                "Warning: JOB_AGENT_GREENHOUSE_ENABLED is set, but no "
-                "JOB_AGENT_GREENHOUSE_BOARD_TOKENS were provided."
-            )
-
-    if config.lever_enabled:
-        if config.lever_handles:
-            sources.extend(
-                LeverSource(handle=handle)
-                for handle in config.lever_handles
-            )
-        else:
-            print(
-                "Warning: JOB_AGENT_LEVER_ENABLED is set, but no "
-                "JOB_AGENT_LEVER_HANDLES were provided."
-            )
-    new_matches = run_pipeline(profile=profile, sources=sources, config=config)
-
-    _export_latest_matches(repo_root=repo_root, new_matches=new_matches)
+    config = load_runtime_config()
+    profile = load_candidate_profile(config.candidate_profile_path)
+    sources = _load_sources(config)
+    state = run_job_discovery_workflow(
+        profile=profile,
+        config=config,
+        selected_job_url=os.getenv("JOB_AGENT_SELECTED_JOB_URL"),
+    )
+    matches = state.get("matches", [])
+    new_matches = state.get("new_matches", [])
+    export_path = Path(state.get("export_path", _export_latest_matches(config, new_matches)))
+    enabled_sources = ", ".join(source.source_name() for source in sources)
+    print(f"Enabled sources: {enabled_sources}")
+    print(
+        "Summary: "
+        f"sources={len(sources)}, "
+        f"collected={len(state.get('collected_jobs', []))}, "
+        f"shortlisted={len(matches)}, "
+        f"new={len(new_matches)}"
+    )
+    print(f"Exported latest matches to: {export_path}")
+    for warning in state.get("warnings", []):
+        print(f"Warning: {warning}")
 
     if not new_matches:
-        print("No new matching jobs found.")
+        print("No new shortlisted jobs found.")
         return
 
-    for job in new_matches:
-        print(_format_job(job))
+    for match in new_matches:
         print("")
+        print(_format_match(match))
 
 
 if __name__ == "__main__":
     main()
-
