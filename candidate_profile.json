@@ -1,8 +1,25 @@
 {
-  "target_levels": ["internship", "junior"],
-  "target_locations": ["Krakow", "remote"],
-  "target_domains": ["AI", "machine learning", "deep learning", "research"],
-  "include_keywords": ["ai", "ml", "machine learning", "deep learning", "research", "pytorch", "tensorflow", "python"],
-  "exclude_keywords": ["senior", "lead", "manager", "principal"]
+  "name": "Sample Candidate",
+  "location": "Krakow, Poland",
+  "summary": "Junior AI/ML candidate focused on applied machine learning, LLM evaluation, and data-driven software engineering.",
+  "target_levels": ["internship", "junior", "graduate", "trainee", "entry-level"],
+  "target_locations": ["Krakow", "Kraków", "Poland", "remote", "hybrid"],
+  "target_domains": ["AI", "machine learning", "deep learning", "research", "NLP", "computer vision", "MLOps"],
+  "include_keywords": ["ai", "ml", "machine learning", "deep learning", "research", "pytorch", "tensorflow", "python", "nlp", "llm", "computer vision"],
+  "exclude_keywords": ["senior", "lead", "manager", "principal", "staff", "head of"],
+  "skills": ["Python", "PyTorch", "TensorFlow", "SQL", "LangChain", "LLM evaluation", "Data analysis"],
+  "projects": [
+    {
+      "name": "LLM Evaluation Pipeline",
+      "summary": "Built an evaluation workflow for comparing prompt variants and structured outputs.",
+      "bullets": [
+        "Implemented repeatable prompt evaluation with Python and JSON output validation.",
+        "Compared prompt quality across tasks and summarized failure modes."
+      ],
+      "skills": ["Python", "LLM evaluation", "Structured outputs"]
+    }
+  ],
+  "education": [
+    "Add your real degree or current studies here."
+  ]
 }
-
