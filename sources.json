@@ -17,11 +17,22 @@
       }
     },
     {
+      "type": "ashby",
+      "enabled": false,
+      "label": "Example Ashby Boards",
+      "config": {
+        "job_board_names": ["ashby"],
+        "company_name": "Ashby",
+        "include_compensation": false
+      }
+    },
+    {
       "type": "pracuj",
       "enabled": true,
       "label": "Pracuj AI/ML Search",
       "config": {
-        "search_url": "https://it.pracuj.pl/praca?kw=machine%20learning&pn=1"
+        "search_url": "https://it.pracuj.pl/praca?kw=machine%20learning&pn=1",
+        "sitemap_urls": []
       }
     },
     {
