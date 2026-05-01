@@ -36,3 +36,8 @@ def test_workflow_smoke_creates_export(tmp_path) -> None:
 
     assert len(state.get("matches", [])) >= 1
     assert (tmp_path / "output" / "latest_matches.json").exists()
+    debug_path = tmp_path / "output" / "collected_jobs_debug.json"
+    assert debug_path.exists()
+    payload = json.loads(debug_path.read_text(encoding="utf-8"))
+    assert len(payload) >= 1
+    assert "description_preview" in payload[0]
