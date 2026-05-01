@@ -1,11 +1,12 @@
 import json
 
+from app.sources.ashby import AshbyParser
 from app.sources.base import FetchResult
 from app.sources.greenhouse import GreenhouseParser
 from app.sources.lever import LeverParser
-from app.sources.nofluffjobs import NoFluffJobsParser
-from app.sources.pracuj import PracujParser
-from app.sources.theprotocol import TheProtocolParser
+from app.sources.nofluffjobs import NoFluffJobsSource
+from app.sources.pracuj import PracujSource
+from app.sources.theprotocol import TheProtocolSource
 
 
 def test_greenhouse_parser_smoke() -> None:
@@ -70,22 +71,95 @@ def test_lever_parser_smoke() -> None:
     assert result[0].category == "AI"
 
 
-def test_html_parsers_smoke() -> None:
-    pracuj = PracujParser().parse(
+def test_ashby_parser_smoke() -> None:
+    parser = AshbyParser(company_name="Ashby")
+    payload = json.dumps(
+        {
+            "jobs": [
+                {
+                    "jobPostingId": "123",
+                    "title": "Machine Learning Intern",
+                    "location": "Krakow, Poland",
+                    "team": "AI",
+                    "department": "Engineering",
+                    "isListed": True,
+                    "descriptionPlain": "Python, ML, and evaluation work.",
+                    "publishedAt": "2026-04-29T12:00:00Z",
+                    "employmentType": "Intern",
+                    "workplaceType": "Hybrid",
+                    "jobUrl": "https://jobs.ashbyhq.com/acme/123",
+                    "applyUrl": "https://jobs.ashbyhq.com/acme/123/apply",
+                }
+            ]
+        }
+    )
+    result = parser.parse(
+        FetchResult(
+            source="ashby",
+            source_label="Ashby",
+            payload=payload,
+            metadata={"job_board_name": "acme"},
+        )
+    )
+
+    assert len(result) == 1
+    assert result[0].company == "Ashby"
+    assert result[0].source_job_id == "123"
+    assert result[0].employment_type == "Intern"
+    assert result[0].category == "AI"
+
+
+def test_pracuj_sitemap_and_listing_parsers() -> None:
+    source = PracujSource(
+        search_url="https://it.pracuj.pl/praca?kw=ml",
+        label="Pracuj",
+        sitemap_urls=["https://it.pracuj.pl/sitemap-jobs.xml"],
+    )
+    sitemap_candidates = source.parse_listing_cards(
         FetchResult(
             source="pracuj",
             source_label="Pracuj",
             payload="""
-            <a href="/oferta/ml-intern" data-test="link-offer">
-              <h2>ML Intern</h2>
-              <h4>Acme</h4>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+              <url><loc>https://it.pracuj.pl/oferta/ml-intern,oferta,1000000</loc></url>
+              <url><loc>https://it.pracuj.pl/oferta/junior-ai,oferta,2000000</loc></url>
+            </urlset>
+            """,
+            metadata={"url": "https://it.pracuj.pl/sitemap-jobs.xml"},
+        )
+    )
+    listing_candidates = source.parse_listing_cards(
+        FetchResult(
+            source="pracuj",
+            source_label="Pracuj",
+            payload="""
+            <a href="/oferta/ml-intern,oferta,1000000" data-test="link-offer">
+              <h2 data-test="offer-title">ML Intern</h2>
+              <h4 data-test="text-company-name">Acme</h4>
               <span data-test="offer-badge-location">Krakow</span>
             </a>
             """,
-            metadata={"url": "https://it.pracuj.pl/praca"},
+            metadata={"url": "https://it.pracuj.pl/praca?kw=ml"},
         )
     )
-    nfj = NoFluffJobsParser().parse(
+
+    assert len(sitemap_candidates) == 2
+    assert sitemap_candidates[0].metadata["discovered_via"] == "sitemap"
+    assert listing_candidates[0].title == "ML Intern"
+    assert listing_candidates[0].company == "Acme"
+
+
+def test_broad_market_fixture_parsers_smoke() -> None:
+    nfj_source = NoFluffJobsSource(
+        search_url="https://nofluffjobs.com/pl/jobs?criteria=keyword%3Dml",
+        label="NFJ",
+    )
+    protocol_source = TheProtocolSource(
+        search_url="https://theprotocol.it/praca?keyword=ml",
+        label="The Protocol",
+    )
+
+    nfj_candidates = nfj_source.parse_listing_cards(
         FetchResult(
             source="nofluffjobs",
             source_label="NFJ",
@@ -99,7 +173,7 @@ def test_html_parsers_smoke() -> None:
             metadata={"url": "https://nofluffjobs.com/pl/jobs"},
         )
     )
-    protocol = TheProtocolParser().parse(
+    protocol_candidates = protocol_source.parse_listing_cards(
         FetchResult(
             source="theprotocol",
             source_label="The Protocol",
@@ -116,6 +190,5 @@ def test_html_parsers_smoke() -> None:
         )
     )
 
-    assert pracuj[0].title == "ML Intern"
-    assert nfj[0].company == "Acme"
-    assert protocol[0].location == "Krakow"
+    assert nfj_candidates[0].company == "Acme"
+    assert protocol_candidates[0].location == "Krakow"
