@@ -1,7 +1,5 @@
 # Agentic Job Discovery and Application Preparation
 
-Professional, interview-ready Python project for discovering AI/ML internships and junior roles in Poland, scoring them with deterministic rules plus optional LLM reranking, persisting results in SQLite, and preparing guarded CV artifacts for selected postings.
-
 ## Problem Statement
 
 Searching for junior AI/ML roles across multiple job boards is repetitive and noisy. Different sources expose different schemas, seniority labels, and location conventions. This project demonstrates how to build an agentic but controlled pipeline that:
@@ -61,6 +59,7 @@ AGENTS.md
 
 V1 includes:
 
+- `AshbySource`
 - `GreenhouseSource`
 - `LeverSource`
 - `PracujSource`
@@ -69,11 +68,49 @@ V1 includes:
 
 Design choices:
 
-- Greenhouse and Lever use public published-job endpoints where possible.
-- Pracuj, No Fluff Jobs, and The Protocol use broad-market discovery pages and HTML parsing.
+- ATS-backed public APIs come first: Ashby, Greenhouse, and Lever use published-job endpoints where possible.
+- Broad-market portals come second: Pracuj, No Fluff Jobs, and The Protocol use layered discovery and HTML parsing.
 - Network fetchers and HTML/JSON parsers are separated so failures are easier to isolate and test.
 - Each source maps into a shared `JobPosting` model.
 - Any single source failure is logged and the workflow continues.
+
+### Source Stability Hierarchy
+
+1. ATS-backed public APIs first
+2. Broad-market listing parsers second
+3. Graceful degradation for brittle or blocked sources
+
+### Why Ashby Was Added
+
+Ashby is increasingly common for startup and AI hiring pipelines, and it exposes a stable public job postings API for published jobs. That makes it a strong interview example of preferring first-party public interfaces over scraping when available.
+
+Example source config:
+
+```json
+{
+  "type": "ashby",
+  "enabled": true,
+  "label": "Ashby Boards",
+  "config": {
+    "job_board_names": ["ashby"],
+    "company_name": "Ashby",
+    "include_compensation": false
+  }
+}
+```
+
+The implementation uses Ashby’s public job postings API documented at `https://developers.ashbyhq.com/docs/public-job-posting-api`.
+
+### Why Pracuj Uses a Layered Strategy
+
+Pracuj does not offer the same stable, documented public job postings API shape as ATS platforms. To keep the source more robust without browser automation, the adapter uses:
+
+1. sitemap-backed discovery via `robots.txt` and sitemap expansion where possible
+2. listing/search page fallback when sitemap discovery is insufficient
+3. separate detail fetching for discovered offer URLs
+4. graceful degradation with explicit warnings on 403, 429, and 5xx responses
+
+This keeps the scraping strategy explainable and more resilient than relying on one direct search-page request.
 
 ## Matching Strategy
 
@@ -127,6 +164,8 @@ Holds the candidate preferences plus verified CV material such as skills, projec
 ### `sources.json`
 
 Defines enabled sources and source-specific configuration, for example board tokens, Lever handles, or discovery URLs.
+
+For Pracuj, you can optionally provide `sitemap_urls` to seed sitemap-backed discovery directly.
 
 ### Environment Variables
 
@@ -183,7 +222,9 @@ python3 -m pytest
 Current lightweight coverage includes:
 
 - model validation
-- source parser smoke tests
+- Ashby parsing smoke tests
+- Pracuj sitemap and listing parser tests
+- broad-market parser fixture tests
 - SQLite dedup/storage
 - rule matcher behavior
 - workflow smoke behavior
@@ -192,6 +233,7 @@ Current lightweight coverage includes:
 
 - Public HTML sources may change markup over time.
 - Broad-market HTML parsers are intentionally conservative rather than exhaustive.
+- Pracuj sitemap availability and shape may change, so the adapter is designed to fall back rather than fail the workflow.
 - CV tailoring is markdown-only in v1.
 - LLM reranking assumes a local endpoint such as Ollama and currently uses a simple JSON-oriented prompt flow.
 
