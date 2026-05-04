@@ -1,7 +1,5 @@
 # Repository Guidance
 
-## Purpose
-Build an interview-ready agentic job discovery and CV tailoring system for AI/ML internships and junior roles in Poland, with Krakow and remote-friendly roles as the primary focus.
 
 ## Engineering Style
 - Keep the code modular, typed, and easy to narrate in an interview.

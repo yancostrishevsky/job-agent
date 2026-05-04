@@ -105,6 +105,8 @@ class MatchResult(BaseModel):
     short_reason: str
     rule_reasons: list[str] = Field(default_factory=list)
     llm_used: bool = False
+    llm_score: int | None = None
+    llm_model: str | None = None
 
 
 class TailoredCVArtifact(BaseModel):
@@ -112,3 +114,5 @@ class TailoredCVArtifact(BaseModel):
     tailored_cv_markdown: str
     tailored_cover_note_markdown: str
     guardrail_notes: list[str] = Field(default_factory=list)
+    llm_used: bool = False
+    llm_model: str | None = None

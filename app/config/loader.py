@@ -13,9 +13,16 @@ from app.models import CandidateProfile
 class LLMConfig(BaseModel):
     enabled: bool = False
     provider: str = "ollama"
-    model: str = "llama3.1"
+    model: str = "qwen3:4b"
     base_url: str = "http://localhost:11434"
     timeout_seconds: float = 30.0
+    rerank_enabled: bool = True
+    tailor_enabled: bool = True
+    rerank_top_k: int = 10
+    comparison_enabled: bool = False
+    comparison_models: list[str] = Field(
+        default_factory=lambda: ["qwen3:4b", "qwen3:8b", "gemma3:4b"]
+    )
 
 
 class SourceDefinition(BaseModel):
@@ -111,8 +118,25 @@ def load_runtime_config() -> RuntimeConfig:
         llm=LLMConfig(
             enabled=llm_enabled,
             provider=os.getenv("JOB_AGENT_LLM_PROVIDER", "ollama"),
-            model=os.getenv("JOB_AGENT_LLM_MODEL", "llama3.1"),
+            model=os.getenv("JOB_AGENT_LLM_MODEL", "qwen3:4b"),
             base_url=os.getenv("JOB_AGENT_LLM_BASE_URL", "http://localhost:11434"),
             timeout_seconds=float(os.getenv("JOB_AGENT_LLM_TIMEOUT_SECONDS", "30")),
+            rerank_enabled=os.getenv("JOB_AGENT_LLM_RERANK_ENABLED", "true").strip().lower()
+            not in {"0", "false", "no", "off"},
+            tailor_enabled=os.getenv("JOB_AGENT_LLM_TAILOR_ENABLED", "true").strip().lower()
+            not in {"0", "false", "no", "off"},
+            rerank_top_k=int(os.getenv("JOB_AGENT_LLM_RERANK_TOP_K", "10")),
+            comparison_enabled=os.getenv("JOB_AGENT_LLM_COMPARISON_ENABLED", "false")
+            .strip()
+            .lower()
+            in {"1", "true", "yes", "on"},
+            comparison_models=[
+                item.strip()
+                for item in os.getenv(
+                    "JOB_AGENT_LLM_COMPARISON_MODELS",
+                    "qwen3:4b,qwen3:8b,gemma3:4b",
+                ).split(",")
+                if item.strip()
+            ],
         ),
     )

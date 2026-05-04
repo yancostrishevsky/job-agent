@@ -93,9 +93,16 @@ def llm_rerank_jobs_node(state: PipelineState, config: RuntimeConfig) -> Pipelin
     from app.matching.llm import OptionalLLMReranker
 
     reranker = OptionalLLMReranker(config.llm)
-    matches = reranker.rerank(state.get("matches", []), state["profile"])
+    rerank_result = reranker.rerank(
+        state.get("matches", []),
+        state["profile"],
+        output_dir=config.output_dir,
+    )
+    matches = rerank_result.matches
     matches = sorted(matches, key=lambda item: item.final_score, reverse=True)
-    return {**state, "matches": matches}
+    warnings = list(state.get("warnings", []))
+    warnings.extend(rerank_result.warnings)
+    return {**state, "matches": matches, "warnings": warnings}
 
 
 def persist_results_node(state: PipelineState, config: RuntimeConfig) -> PipelineState:
@@ -128,11 +135,15 @@ def export_shortlist_node(state: PipelineState, config: RuntimeConfig) -> Pipeli
             "location": match.job.location,
             "source": match.job.source_label,
             "score": match.final_score,
+            "deterministic_score": match.deterministic_score,
+            "llm_score": match.llm_score,
             "decision": match.decision,
             "reason": match.short_reason,
             "matched_skills": match.matched_skills,
             "missing_skills": match.missing_skills,
             "url": str(match.job.url),
+            "llm_used": match.llm_used,
+            "llm_model": match.llm_model,
         }
         for match in state.get("new_matches", [])
     ]
@@ -156,9 +167,16 @@ def tailor_cv_for_selected_job_node(
         warnings.append(f"Selected job not found in shortlisted results: {selected_job_url}")
         return {**state, "warnings": warnings}
 
-    artifact = tailor_cv(state["profile"], match.job)
-    write_tailored_artifact(config.output_dir, artifact)
-    return {**state, "tailored_artifact": artifact}
+    tailoring_result = tailor_cv(
+        state["profile"],
+        match.job,
+        llm_config=config.llm,
+        output_dir=config.output_dir,
+    )
+    write_tailored_artifact(config.output_dir, tailoring_result.artifact)
+    warnings = list(state.get("warnings", []))
+    warnings.extend(tailoring_result.warnings)
+    return {**state, "tailored_artifact": tailoring_result.artifact, "warnings": warnings}
 
 
 def _build_state_graph(config: RuntimeConfig):

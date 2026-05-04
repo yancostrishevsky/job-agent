@@ -42,11 +42,15 @@ def _export_latest_matches(config: RuntimeConfig, matches: list[MatchResult]) ->
             "location": match.job.location,
             "source": match.job.source_label,
             "score": match.final_score,
+            "deterministic_score": match.deterministic_score,
+            "llm_score": match.llm_score,
             "decision": match.decision,
             "reason": match.short_reason,
             "matched_skills": match.matched_skills,
             "missing_skills": match.missing_skills,
             "url": str(match.job.url),
+            "llm_used": match.llm_used,
+            "llm_model": match.llm_model,
         }
         for match in matches
     ]

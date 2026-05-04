@@ -7,7 +7,7 @@ Searching for junior AI/ML roles across multiple job boards is repetitive and no
 - collects jobs from multiple sources
 - normalizes them into a shared schema
 - filters and scores them deterministically
-- optionally reranks them semantically with an LLM
+- optionally reranks them semantically with a local LLM
 - persists and exports shortlisted results
 - prepares tailored CV materials without inventing experience
 
@@ -33,6 +33,17 @@ collect_jobs --> normalize_jobs --> rule_filter_jobs --> llm_rerank_jobs
                                                            v
 tailor_cv_for_selected_job <-- export_shortlist <-- persist_results
 ```
+
+## Hybrid Lifecycle
+
+The project is intentionally hybrid:
+
+1. deterministic ingestion and normalization
+2. deterministic rule-based filtering
+3. optional local semantic reranking via Ollama
+4. optional guarded CV tailoring via Ollama
+
+This means the app still runs end-to-end when Ollama is disabled, unavailable, or returns malformed output. The deterministic layer remains the source of truth and the LLM layer is additive, not foundational.
 
 ### Package Layout
 
@@ -126,7 +137,7 @@ The rule engine prioritizes explainability and predictable fallback behavior:
 
 Each shortlisted result carries human-readable reasons, matched skills, missing skills, and a decision.
 
-### 2. Optional LLM Reranking
+### 2. Optional Local LLM Reranking
 
 Only jobs that pass the rule stage are eligible for reranking. The LLM is expected to return structured JSON with:
 
@@ -139,6 +150,13 @@ Only jobs that pass the rule stage are eligible for reranking. The LLM is expect
 - `short_reason`
 
 If the LLM is disabled or unavailable, the workflow returns deterministic results only.
+
+The reranker uses Ollama's local HTTP API with structured JSON output and blends scores in a simple, explainable way:
+
+- deterministic score weight: `0.65`
+- LLM fit score weight: `0.35`
+
+Only the top `rerank_top_k` deterministic matches are sent to the model. The rest keep their deterministic ranking.
 
 ## CV Tailoring Guardrails
 
@@ -154,6 +172,8 @@ Guardrails:
 - never inflate years of experience
 - never add fake projects
 - only reorder, condense, or emphasize verified profile content
+
+The local LLM tailoring flow is implemented as a guarded selection step. The model is allowed to choose which verified skills, projects, project bullets, experience bullets, and education entries to emphasize. It is not allowed to introduce new facts.
 
 ## Configuration
 
@@ -181,7 +201,25 @@ For Pracuj, you can optionally provide `sitemap_urls` to seed sitemap-backed dis
 - `JOB_AGENT_LLM_MODEL`
 - `JOB_AGENT_LLM_BASE_URL`
 - `JOB_AGENT_LLM_TIMEOUT_SECONDS`
+- `JOB_AGENT_LLM_RERANK_ENABLED`
+- `JOB_AGENT_LLM_TAILOR_ENABLED`
+- `JOB_AGENT_LLM_RERANK_TOP_K`
+- `JOB_AGENT_LLM_COMPARISON_ENABLED`
+- `JOB_AGENT_LLM_COMPARISON_MODELS`
 - `JOB_AGENT_SELECTED_JOB_URL`
+
+### Ollama Setup
+
+Install and run Ollama locally, then pull the models used in this project:
+
+```bash
+ollama serve
+ollama pull qwen3:4b
+ollama pull qwen3:8b
+ollama pull gemma3:4b
+```
+
+The project talks to Ollama over the local HTTP API, by default at `http://localhost:11434`.
 
 ## Run
 
@@ -194,6 +232,58 @@ python -m app.main
 
 The CLI prints enabled sources and summary counts, persists jobs to SQLite, and writes `output/latest_matches.json`.
 
+### Deterministic-Only Run
+
+```bash
+python -m app.main
+```
+
+### Enable Local LLM Reranking
+
+```bash
+export JOB_AGENT_LLM_ENABLED=true
+export JOB_AGENT_LLM_MODEL=qwen3:4b
+export JOB_AGENT_LLM_RERANK_TOP_K=10
+python -m app.main
+```
+
+### Tailor CV for a Selected Job
+
+Use the shortlisted job URL as `JOB_AGENT_SELECTED_JOB_URL`:
+
+```bash
+export JOB_AGENT_LLM_ENABLED=true
+export JOB_AGENT_LLM_MODEL=qwen3:8b
+export JOB_AGENT_SELECTED_JOB_URL="https://example.com/job"
+python -m app.main
+```
+
+This writes:
+
+- `output/tailored_cv.md`
+- `output/tailored_cover_note.md`
+
+### Compare Local Models
+
+You can benchmark the same reranking and tailoring flow across the supported local models:
+
+```bash
+export JOB_AGENT_LLM_ENABLED=true
+export JOB_AGENT_LLM_MODEL=qwen3:4b
+export JOB_AGENT_LLM_COMPARISON_ENABLED=true
+export JOB_AGENT_LLM_COMPARISON_MODELS="qwen3:4b,qwen3:8b,gemma3:4b"
+python -m app.main
+```
+
+Comparison artifacts are written under:
+
+- `output/model_comparisons/rerank_qwen3_4b.json`
+- `output/model_comparisons/rerank_qwen3_8b.json`
+- `output/model_comparisons/rerank_gemma3_4b.json`
+- `output/model_comparisons/tailored_cv_qwen3_4b.md`
+- `output/model_comparisons/tailored_cv_qwen3_8b.md`
+- `output/model_comparisons/tailored_cv_gemma3_4b.md`
+
 ## Sample Output
 
 ```json
@@ -204,11 +294,15 @@ The CLI prints enabled sources and summary counts, persists jobs to SQLite, and 
     "location": "Krakow, Poland",
     "source": "Pracuj AI/ML Search",
     "score": 84,
+    "deterministic_score": 79,
+    "llm_score": 92,
     "decision": "strong_match",
-    "reason": "seniority=target_level; location=target_location; domains=machine learning",
+    "reason": "seniority=target_level; location=target_location; domains=machine learning; llm=Strong semantic fit with verified Python and ML focus",
     "matched_skills": ["Python", "PyTorch"],
     "missing_skills": ["TensorFlow"],
-    "url": "https://example.com/job"
+    "url": "https://example.com/job",
+    "llm_used": true,
+    "llm_model": "qwen3:4b"
   }
 ]
 ```
@@ -222,9 +316,13 @@ python3 -m pytest
 Current lightweight coverage includes:
 
 - model validation
+- runtime config env overrides
 - Ashby parsing smoke tests
 - Pracuj sitemap and listing parser tests
 - broad-market parser fixture tests
+- Ollama structured output parsing
+- LLM reranker fallback and score shaping
+- CV tailoring guardrails and malformed output fallback
 - SQLite dedup/storage
 - rule matcher behavior
 - workflow smoke behavior
@@ -234,8 +332,9 @@ Current lightweight coverage includes:
 - Public HTML sources may change markup over time.
 - Broad-market HTML parsers are intentionally conservative rather than exhaustive.
 - Pracuj sitemap availability and shape may change, so the adapter is designed to fall back rather than fail the workflow.
-- CV tailoring is markdown-only in v1.
-- LLM reranking assumes a local endpoint such as Ollama and currently uses a simple JSON-oriented prompt flow.
+- Public broad-market sources may still block or rate-limit scraping.
+- CV tailoring currently uses guarded LLM fact selection plus deterministic markdown rendering, not free-form generation.
+- Local LLM quality varies by model size and prompt sensitivity, which is why the comparison mode exists.
 
 ## Roadmap
 
