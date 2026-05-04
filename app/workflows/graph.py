@@ -31,7 +31,6 @@ def collect_jobs_node(state: PipelineState, config: RuntimeConfig) -> PipelineSt
 
 
 def normalize_jobs_node(state: PipelineState, config: RuntimeConfig) -> PipelineState:
-    _ = config
     normalized = []
     seen_urls: set[str] = set()
     for job in state.get("collected_jobs", []):
@@ -49,7 +48,25 @@ def normalize_jobs_node(state: PipelineState, config: RuntimeConfig) -> Pipeline
                 }
             )
         )
+    _write_collected_jobs_debug(config.output_dir, normalized)
     return {**state, "normalized_jobs": normalized}
+
+
+def _write_collected_jobs_debug(output_dir: Path, jobs: list) -> None:
+    debug_path = output_dir / "collected_jobs_debug.json"
+    debug_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = [
+        {
+            "title": job.title,
+            "company": job.company,
+            "location": job.location,
+            "source": job.source_label,
+            "url": str(job.url),
+            "description_preview": job.description[:300],
+        }
+        for job in jobs[:30]
+    ]
+    debug_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def rule_filter_jobs_node(state: PipelineState, config: RuntimeConfig) -> PipelineState:

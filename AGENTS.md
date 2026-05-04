@@ -21,7 +21,10 @@ Build an interview-ready agentic job discovery and CV tailoring system for AI/ML
 - Keep network access and parsing in separate classes.
 - Fail one source at a time, never fail the whole pipeline because a single source changed.
 - Prefer stable public endpoints when available before HTML scraping.
+- For broad-market portals, keep the flow explicit: `discover_listing_urls()`, `fetch_listing_page()`, `parse_listing_cards()`, `fetch_job_detail()`, `parse_job_detail()`.
+- For ATS-backed platforms, prefer official public job board APIs over HTML parsing.
 - Use broad, resilient selectors for HTML parsers and cover them with parser smoke tests.
+- If an external repo is only inspiration and does not show a clear reuse-friendly license, do not copy code from it.
 
 ## Matching Rules
 - Deterministic filtering runs before any LLM call.

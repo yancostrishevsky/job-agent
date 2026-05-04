@@ -2,7 +2,7 @@
   "name": "Sample Candidate",
   "location": "Krakow, Poland",
   "summary": "Junior AI/ML candidate focused on applied machine learning, LLM evaluation, and data-driven software engineering.",
-  "target_levels": ["internship", "junior", "graduate", "trainee", "entry-level"],
+  "target_levels": ["internship", "junior", "graduate", "trainee", "entry-level", "mid", "senior"],
   "target_locations": ["Krakow", "Kraków", "Poland", "remote", "hybrid"],
   "target_domains": ["AI", "machine learning", "deep learning", "research", "NLP", "computer vision", "MLOps"],
   "include_keywords": ["ai", "ml", "machine learning", "deep learning", "research", "pytorch", "tensorflow", "python", "nlp", "llm", "computer vision"],

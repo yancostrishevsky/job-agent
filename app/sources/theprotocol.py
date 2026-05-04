@@ -1,19 +1,22 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-import requests
-
 from app.models import JobPosting
-from app.sources.base import BaseJobParser, FetchResult, JobSource, RequestsHTMLFetcher
+from app.sources.base import FetchResult
+from app.sources.broad_market import BroadMarketJobSource, ListingCandidate
 from app.sources.common import absolute_url, clean_text, soup_from_html
 
 
-class TheProtocolParser(BaseJobParser):
-    def parse(self, result: FetchResult) -> list[JobPosting]:
+class TheProtocolSource(BroadMarketJobSource):
+    source = "theprotocol"
+
+    def discover_listing_urls(self, session) -> list[str]:
+        _ = session
+        return [self.search_url]
+
+    def parse_listing_cards(self, result: FetchResult) -> list[ListingCandidate]:
         soup = soup_from_html(result.payload)
-        postings: list[JobPosting] = []
         cards = soup.select("a[href*='/praca/'], article a")
+        candidates: list[ListingCandidate] = []
         seen_urls: set[str] = set()
 
         for card in cards:
@@ -29,11 +32,8 @@ class TheProtocolParser(BaseJobParser):
                 clean_text(node.get_text(" ", strip=True))
                 for node in card.select("[class*='tag'], [class*='badge']")
             ]
-
-            postings.append(
-                JobPosting(
-                    source=result.source,
-                    source_label=result.source_label,
+            candidates.append(
+                ListingCandidate(
                     url=href,
                     title=clean_text(title_node.get_text(" ", strip=True)) or "Untitled",
                     company=clean_text(
@@ -48,32 +48,25 @@ class TheProtocolParser(BaseJobParser):
                     },
                 )
             )
-        return postings
+        return candidates
 
-
-@dataclass(slots=True)
-class TheProtocolSource(JobSource):
-    search_url: str
-    label: str
-    timeout_seconds: float = 20.0
-
-    def __post_init__(self) -> None:
-        self._fetcher = RequestsHTMLFetcher(
-            source="theprotocol",
-            source_label=self.label,
-            url=self.search_url,
-            timeout_seconds=self.timeout_seconds,
+    def parse_job_detail(
+        self,
+        candidate: ListingCandidate,
+        result: FetchResult,
+    ) -> JobPosting:
+        soup = soup_from_html(result.payload)
+        description_node = soup.select_one("article, [class*='description'], main")
+        description = clean_text(
+            description_node.get_text(" ", strip=True) if description_node else candidate.description
         )
-        self._parser = TheProtocolParser()
-
-    def fetch_jobs(self) -> list[JobPosting]:
-        try:
-            return self._parser.parse(self._fetcher.fetch())
-        except (requests.RequestException, ValueError) as exc:
-            print(
-                f"Warning: The Protocol source '{self.label}' failed: {exc}. Continuing."
-            )
-            return []
-
-    def source_name(self) -> str:
-        return self.label
+        return JobPosting(
+            source=self.source,
+            source_label=self.label,
+            url=candidate.url,
+            title=candidate.title,
+            company=candidate.company,
+            location=candidate.location,
+            description=description,
+            metadata=candidate.metadata,
+        )

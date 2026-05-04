@@ -17,11 +17,22 @@
       }
     },
     {
+      "type": "ashby",
+      "enabled": false,
+      "label": "Example Ashby Boards",
+      "config": {
+        "job_board_names": ["ashby"],
+        "company_name": "Ashby",
+        "include_compensation": false
+      }
+    },
+    {
       "type": "pracuj",
       "enabled": true,
       "label": "Pracuj AI/ML Search",
       "config": {
-        "search_url": "https://it.pracuj.pl/praca?kw=machine%20learning&pn=1"
+        "search_url": "https://it.pracuj.pl/praca?kw=machine%20learning&pn=1",
+        "sitemap_urls": []
       }
     },
     {
@@ -39,6 +50,23 @@
       "config": {
         "search_url": "https://theprotocol.it/praca?keyword=machine%20learning"
       }
-    }
+    },
+    {
+  "type": "public_career_page",
+  "enabled": true,
+  "label": "Example Careers",
+  "config": {
+    "url": "https://example.com/careers",
+    "company_name": "Example"
+  }
+},
+{
+  "type": "linkedin",
+  "enabled": true,
+  "label": "LinkedIn AI/ML",
+  "config": {
+    "search_url": "https://www.linkedin.com/jobs/search/?keywords=machine%20learning&location=Poland"
+  }
+}
   ]
 }
