@@ -5,8 +5,10 @@ from app.sources.ashby import AshbySource
 from app.sources.base import JobSource
 from app.sources.greenhouse import GreenhouseSource
 from app.sources.lever import LeverSource
+from app.sources.linkedin import LinkedInSource
 from app.sources.nofluffjobs import NoFluffJobsSource
 from app.sources.pracuj import PracujSource
+from app.sources.public_career_page import PublicCareerPageSource
 from app.sources.theprotocol import TheProtocolSource
 
 
@@ -80,6 +82,26 @@ def build_sources(definitions: list[SourceDefinition]) -> list[JobSource]:
             if isinstance(search_url, str) and search_url:
                 sources.append(
                     TheProtocolSource(search_url=search_url, label=definition.label)
+                )
+            continue
+
+        if definition.type == "public_career_page":
+            url = definition.config.get("url")
+            if isinstance(url, str) and url:
+                sources.append(
+                    PublicCareerPageSource(
+                        url=url,
+                        label=definition.label,
+                        company_name=definition.config.get("company_name"),
+                    )
+                )
+            continue
+
+        if definition.type == "linkedin":
+            search_url = definition.config.get("search_url")
+            if isinstance(search_url, str) and search_url:
+                sources.append(
+                    LinkedInSource(search_url=search_url, label=definition.label)
                 )
 
     return sources

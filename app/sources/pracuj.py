@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import xml.etree.ElementTree as ET
+from typing import Any
 
 import requests
 
@@ -36,11 +38,11 @@ class PracujSource(BroadMarketJobSource):
             pass
 
     def discover_listing_urls(self, session: requests.Session) -> list[str]:
-        discovered = list(self.sitemap_urls)
+        discovered = [self.search_url]
+        discovered.extend(self.sitemap_urls)
         discovered.extend(self._discover_sitemaps_from_robots(session))
-        if not discovered:
+        if len(discovered) == 1:
             discovered.extend(self.DEFAULT_SITEMAP_URLS)
-        discovered.append(self.search_url)
 
         ordered: list[str] = []
         seen: set[str] = set()
@@ -62,6 +64,7 @@ class PracujSource(BroadMarketJobSource):
         result: FetchResult,
     ) -> JobPosting:
         soup = soup_from_html(result.payload)
+        schema = self._extract_jobposting_schema(soup)
         title_node = soup.select_one("h1, [data-test='text-positionName']")
         company_node = soup.select_one("[data-test='text-employerName'], [class*='employer']")
         location_node = soup.select_one("[data-test='offer-badge-location'], [class*='location']")
@@ -75,11 +78,30 @@ class PracujSource(BroadMarketJobSource):
             source=self.source,
             source_label=self.label,
             url=candidate.url,
-            title=clean_text(title_node.get_text(" ", strip=True) if title_node else candidate.title),
-            company=clean_text(company_node.get_text(" ", strip=True) if company_node else candidate.company),
-            location=clean_text(location_node.get_text(" ", strip=True) if location_node else candidate.location),
+            title=clean_text(
+                title_node.get_text(" ", strip=True) if title_node else self._schema_string(schema, "title")
+            )
+            or candidate.title,
+            company=clean_text(
+                company_node.get_text(" ", strip=True)
+                if company_node
+                else self._schema_nested_string(schema, "hiringOrganization", "name")
+            )
+            or candidate.company,
+            location=clean_text(
+                location_node.get_text(" ", strip=True)
+                if location_node
+                else (
+                    self._schema_nested_string(schema, "jobLocation", "address", "addressLocality")
+                    or self._schema_nested_string(schema, "jobLocation", "address", "addressRegion")
+                    or self._schema_nested_string(schema, "jobLocation", "address", "addressCountry")
+                )
+            )
+            or candidate.location,
             description=clean_text(
-                description_node.get_text(" ", strip=True) if description_node else candidate.description
+                description_node.get_text(" ", strip=True)
+                if description_node
+                else self._html_to_text(self._schema_string(schema, "description"))
             ),
             seniority=clean_text(
                 seniority_node.get_text(" ", strip=True)
@@ -89,8 +111,15 @@ class PracujSource(BroadMarketJobSource):
             employment_type=clean_text(
                 employment_type_node.get_text(" ", strip=True)
                 if employment_type_node
-                else candidate.metadata.get("employment_type", "")
+                else (
+                    candidate.metadata.get("employment_type", "")
+                    or self._schema_string(schema, "employmentType")
+                )
             ) or None,
+            source_job_id=(
+                candidate.metadata.get("source_job_id")
+                or self._schema_nested_string(schema, "identifier", "value")
+            ),
             metadata=candidate.metadata,
         )
 
@@ -162,18 +191,25 @@ class PracujSource(BroadMarketJobSource):
 
     def _parse_listing_candidates(self, result: FetchResult) -> list[ListingCandidate]:
         soup = soup_from_html(result.payload)
-        cards = soup.select("a[data-test='link-offer'], a[href*='/oferta/'], article a[href*='/oferta/']")
+        cards = soup.select(
+            "[data-test='section-offer'], article[data-test='section-offer'], "
+            "a[data-test='link-offer'], a[href*='/oferta/'], article a[href*='/oferta/']"
+        )
         candidates: list[ListingCandidate] = []
         seen_urls: set[str] = set()
         for card in cards:
-            href = absolute_url(result.metadata["url"], card.get("href"))
+            link_node = card if card.name == "a" else card.select_one("a[href*='/oferta/']")
+            href = absolute_url(result.metadata["url"], link_node.get("href") if link_node else None)
             if not href or href in seen_urls:
                 continue
             seen_urls.add(href)
             title_node = card.select_one("[data-test='offer-title'], h2, h3")
-            company_node = card.select_one("[data-test='text-company-name'], h4, span")
+            company_node = card.select_one(
+                "[data-test='text-company-name'], [data-test='offer-company-name'], h4"
+            )
             location_node = card.select_one(
-                "[data-test='offer-badge-location'], [data-test='offer-badge-description'], div, span"
+                "[data-test='offer-badge-location'], [data-test='text-regionName'], "
+                "[data-test='offer-badge-description']"
             )
             candidates.append(
                 ListingCandidate(
@@ -188,3 +224,72 @@ class PracujSource(BroadMarketJobSource):
 
     def _xml_text(self, node: ET.Element) -> str:
         return node.text.strip() if node.text else ""
+
+    def _extract_jobposting_schema(self, soup) -> dict[str, Any]:
+        for script in soup.select("script[type='application/ld+json']"):
+            raw = script.get_text(strip=True)
+            if not raw:
+                continue
+            try:
+                decoded = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            jobposting = self._find_jobposting_node(decoded)
+            if jobposting is not None:
+                return jobposting
+        return {}
+
+    def _find_jobposting_node(self, payload: Any) -> dict[str, Any] | None:
+        if isinstance(payload, list):
+            for item in payload:
+                match = self._find_jobposting_node(item)
+                if match is not None:
+                    return match
+            return None
+        if not isinstance(payload, dict):
+            return None
+        node_type = payload.get("@type")
+        if isinstance(node_type, str) and node_type.lower() == "jobposting":
+            return payload
+        if isinstance(node_type, list) and any(
+            isinstance(item, str) and item.lower() == "jobposting" for item in node_type
+        ):
+            return payload
+        graph = payload.get("@graph")
+        if isinstance(graph, list):
+            for item in graph:
+                match = self._find_jobposting_node(item)
+                if match is not None:
+                    return match
+        return None
+
+    def _schema_nested_string(self, payload: dict[str, Any], *keys: str) -> str | None:
+        current: Any = payload
+        for key in keys:
+            if isinstance(current, list):
+                current = current[0] if current else None
+            if not isinstance(current, dict):
+                return None
+            current = current.get(key)
+        return self._schema_value_to_string(current)
+
+    def _schema_string(self, payload: dict[str, Any], key: str) -> str | None:
+        return self._schema_value_to_string(payload.get(key))
+
+    def _schema_value_to_string(self, value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, list):
+            value = value[0] if value else None
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            return None
+        return str(value)
+
+    def _html_to_text(self, value: str | None) -> str:
+        if not value:
+            return ""
+        return clean_text(soup_from_html(value).get_text(" ", strip=True))
